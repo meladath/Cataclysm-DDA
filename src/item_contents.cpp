@@ -36,6 +36,12 @@ void item_contents::deserialize( JsonIn &jsin )
 
 void item_contents::add_legacy_pocket()
 {
+    for( const item_pocket &pocket : contents ) {
+        if( pocket.is_type( item_pocket::pocket_type::LEGACY_CONTAINER ) ) {
+            // an item should not have more than one legacy pocket
+            return;
+        }
+    }
     contents.emplace_front( item_pocket( item_pocket::pocket_type::LEGACY_CONTAINER ) );
 }
 
@@ -178,7 +184,7 @@ const item &item_contents::legacy_front() const
 
 size_t item_contents::legacy_size() const
 {
-    if ( contents.empty() ) {
+    if( contents.empty() ) {
         return 0;
     }
     return legacy_pocket().size();

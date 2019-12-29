@@ -20,7 +20,8 @@ class item_contents
 {
     public:
         item_contents() {
-            contents.emplace_back( item_pocket( item_pocket::pocket_type::LEGACY_CONTAINER ) );
+            // items should have a legacy pocket until everything is migrated
+            add_legacy_pocket();
         }
 
         bool is_nestable() const {
