@@ -178,6 +178,9 @@ const item &item_contents::legacy_front() const
 
 size_t item_contents::legacy_size() const
 {
+    if ( contents.empty() ) {
+        return 0;
+    }
     return legacy_pocket().size();
 }
 
