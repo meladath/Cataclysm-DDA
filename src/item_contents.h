@@ -19,7 +19,9 @@ struct tripoint;
 class item_contents
 {
     public:
-        item_contents() = default;
+        item_contents() {
+            contents.emplace_back( item_pocket( item_pocket::pocket_type::LEGACY_CONTAINER ) );
+        }
 
         bool is_nestable() const {
             return nestable;
