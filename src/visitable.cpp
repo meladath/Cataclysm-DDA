@@ -364,7 +364,7 @@ static VisitResponse visit_internal( const std::function<VisitResponse( item *, 
                 return VisitResponse::NEXT;
             }
 
-            if( node->contents.visit_contents( func, node, parent ) == VisitResponse::ABORT ) {
+            if( node->contents.visit_contents( func, parent ) == VisitResponse::ABORT ) {
                 return VisitResponse::ABORT;
             }
         /* intentional fallthrough */
