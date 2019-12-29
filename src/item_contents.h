@@ -93,7 +93,7 @@ class item_contents
         // @relates visitable
         // NOTE: upon expansion, this may need to be filtered by type enum depending on accessibility
         VisitResponse visit_contents( const std::function<VisitResponse( item *, item * )> &func,
-                                      item *node, item *parent = nullptr );
+                                      item *parent = nullptr );
 
         void info( std::vector<iteminfo> &info ) const;
 

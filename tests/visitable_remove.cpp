@@ -215,7 +215,7 @@ TEST_CASE( "visitable_remove", "[visitable]" )
         WHEN( "a hip flask containing water is worn" ) {
             item obj( worn_id );
             obj.contents.insert_legacy( item( liquid_id, calendar::turn,
-                              temp_liquid.charges_per_volume( obj.get_container_capacity() ) ) );
+                                              temp_liquid.charges_per_volume( obj.get_container_capacity() ) ) );
             p.wear_item( obj );
 
             REQUIRE( count_items( p, container_id ) == count );

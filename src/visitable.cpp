@@ -378,7 +378,7 @@ static VisitResponse visit_internal( const std::function<VisitResponse( item *, 
 }
 
 VisitResponse item_contents::visit_contents( const std::function<VisitResponse( item *, item * )>
-        &func, item *node, item *parent )
+        &func, item *parent )
 {
     for( item_pocket &pocket : contents ) {
         switch( pocket.visit_contents( func, parent ) ) {
