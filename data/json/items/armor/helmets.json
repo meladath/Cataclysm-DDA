@@ -89,7 +89,7 @@
     "color": "dark_gray",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 100, "encumbrance": 30 },
-      { "covers": [ "eyes", "mouth" ], "coverage": 100, "encumbrance": 0 }
+      { "covers": [ "eyes", "mouth" ], "coverage": 100, "encumbrance": 5 }
     ],
     "warmth": 15,
     "material_thickness": 5,
@@ -166,7 +166,7 @@
     "color": "blue",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 95, "encumbrance": 20 },
-      { "covers": [ "mouth", "eyes" ], "coverage": 100, "encumbrance": 0 }
+      { "covers": [ "mouth", "eyes" ], "coverage": 50, "encumbrance": 0 }
     ],
     "warmth": 15,
     "material_thickness": 3,
@@ -189,8 +189,8 @@
     "looks_like": "helmet_plate",
     "color": "light_gray",
     "armor_portion_data": [
-      { "covers": [ "head" ], "coverage": 90, "encumbrance": 20 },
-      { "covers": [ "eyes" ], "coverage": 90, "encumbrance": 0 }
+      { "covers": [ "head" ], "coverage": 95, "encumbrance": 20 },
+      { "covers": [ "eyes", "mouth" ], "coverage": 75, "encumbrance": 0 }
     ],
     "warmth": 10,
     "material_thickness": 4,
@@ -296,9 +296,9 @@
     "looks_like": "helmet_motor",
     "color": "yellow",
     "armor_portion_data": [
-      { "covers": [ "head" ], "coverage": 85, "encumbrance": 50 },
-      { "covers": [ "eyes" ], "coverage": 75, "encumbrance": 0 },
-      { "covers": [ "mouth" ], "coverage": 100, "encumbrance": 0 }
+      { "covers": [ "head" ], "coverage": 95, "encumbrance": 50 },
+      { "covers": [ "eyes" ], "coverage": 75, "encumbrance": 5 },
+      { "covers": [ "mouth" ], "coverage": 95, "encumbrance": 5 }
     ],
     "warmth": 10,
     "material_thickness": 4,
@@ -319,10 +319,7 @@
     "symbol": "[",
     "looks_like": "helmet_barbute",
     "color": "light_gray",
-    "armor_portion_data": [
-      { "covers": [ "head" ], "coverage": 85, "encumbrance": 10 },
-      { "covers": [ "eyes", "mouth" ], "coverage": 75, "encumbrance": 0 }
-    ],
+    "armor_portion_data": [ { "covers": [ "head" ], "coverage": 90, "encumbrance": 10 } ],
     "warmth": 10,
     "material_thickness": 3,
     "techniques": [ "WBLOCK_1" ],
@@ -436,7 +433,8 @@
     "color": "light_gray",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 98, "encumbrance": 20 },
-      { "covers": [ "eyes", "mouth" ], "coverage": 75, "encumbrance": 0 }
+      { "covers": [ "eyes" ], "coverage": 80, "encumbrance": 0 },
+      { "covers": [ "mouth" ], "coverage": 50, "encumbrance": 0 }
     ],
     "warmth": 20,
     "material_thickness": 4,
@@ -461,8 +459,7 @@
     "color": "dark_gray",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 100, "encumbrance": 25 },
-      { "covers": [ "eyes" ], "coverage": 25, "encumbrance": 0 },
-      { "covers": [ "mouth" ], "coverage": 100, "encumbrance": 10 }
+      { "covers": [ "eyes", "mouth" ], "coverage": 100, "encumbrance": 5 }
     ],
     "warmth": 30,
     "material_thickness": 6,
@@ -487,7 +484,7 @@
     "color": "light_gray",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 80, "encumbrance": 10 },
-      { "covers": [ "eyes" ], "coverage": 75, "encumbrance": 0 }
+      { "covers": [ "eyes" ], "coverage": 50, "encumbrance": 0 }
     ],
     "warmth": 10,
     "material_thickness": 3,
@@ -656,8 +653,7 @@
     "color": "yellow",
     "armor_portion_data": [
       { "covers": [ "head" ], "coverage": 90, "encumbrance": 30 },
-      { "covers": [ "eyes" ], "coverage": 90, "encumbrance": 5 },
-      { "covers": [ "mouth" ], "coverage": 90, "encumbrance": 10 }
+      { "covers": [ "eyes", "mouth" ], "coverage": 90, "encumbrance": 5 }
     ],
     "warmth": 10,
     "material_thickness": 3,
