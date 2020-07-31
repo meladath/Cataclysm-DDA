@@ -337,7 +337,7 @@ void monster::plan()
             if( angers_mating_season > 0 ) {
                 bool mating_angry = false;
                 season_type season = season_of_year( calendar::turn );
-                for( auto &elem : type->baby_flags ) {
+                for( const std::string &elem : type->baby_flags ) {
                     if( ( season == SUMMER && elem == "SUMMER" ) ||
                         ( season == WINTER && elem == "WINTER" ) ||
                         ( season == SPRING && elem == "SPRING" ) ||
@@ -415,7 +415,7 @@ void monster::plan()
             if( angers_mating_season > 0 ) {
                 bool mating_angry = false;
                 season_type season = season_of_year( calendar::turn );
-                for( auto &elem : type->baby_flags ) {
+                for( const std::string &elem : type->baby_flags ) {
                     if( ( season == SUMMER && elem == "SUMMER" ) ||
                         ( season == WINTER && elem == "WINTER" ) ||
                         ( season == SPRING && elem == "SPRING" ) ||
@@ -508,7 +508,7 @@ void monster::plan()
     if( type->has_special_attack( "OPERATE" ) ) {
         if( has_effect( effect_operating ) ) {
             friendly = 100;
-            for( auto critter : here.get_creatures_in_radius( pos(), 6 ) ) {
+            for( Creature *critter : here.get_creatures_in_radius( pos(), 6 ) ) {
                 monster *mon = dynamic_cast<monster *>( critter );
                 if( mon != nullptr && mon->type->in_species( species_ZOMBIE ) ) {
                     anger = 100;
@@ -867,7 +867,7 @@ void monster::move()
     if( moved ) {
         // Implement both avoiding obstacles and staggering.
         moved = false;
-        float switch_chance = 0.0;
+        float switch_chance = 0.0f;
         const bool can_bash = bash_skill() > 0;
         // This is a float and using trig_dist() because that Does the Right Thing(tm)
         // in both circular and roguelike distance modes.
@@ -1129,7 +1129,7 @@ void monster::footsteps( const tripoint &p )
 tripoint monster::scent_move()
 {
     // TODO: Remove when scentmap is 3D
-    if( std::abs( posz() - g->get_levz() ) > SCENT_MAP_Z_REACH ) {
+    if( std::abs( posz() - get_map().get_abs_sub().z ) > SCENT_MAP_Z_REACH ) {
         return { -1, -1, INT_MIN };
     }
 
@@ -1148,19 +1148,19 @@ tripoint monster::scent_move()
     Character &player_character = get_player_character();
     const bool fleeing = is_fleeing( player_character );
     if( fleeing ) {
-        bestsmell = g->scent.get( pos() );
+        bestsmell = get_scent().get( pos() );
     }
 
     tripoint next( -1, -1, posz() );
-    if( ( !fleeing && g->scent.get( pos() ) > smell_threshold ) ||
+    if( ( !fleeing && get_scent().get( pos() ) > smell_threshold ) ||
         ( fleeing && bestsmell == 0 ) ) {
         return next;
     }
     const bool can_bash = bash_skill() > 0;
     map &here = get_map();
     for( const auto &dest : here.points_in_radius( pos(), 1, SCENT_MAP_Z_REACH ) ) {
-        int smell = g->scent.get( dest );
-        const scenttype_id &type_scent = g->scent.get_type( dest );
+        int smell = get_scent().get( dest );
+        const scenttype_id &type_scent = get_scent().get_type( dest );
 
         bool right_scent = false;
         // is the monster tracking this scent
@@ -1421,7 +1421,7 @@ bool monster::attack_at( const tripoint &p )
         return true;
     }
 
-    if( const auto mon_ = g->critter_at<monster>( p, is_hallucination() ) ) {
+    if( monster *mon_ = g->critter_at<monster>( p, is_hallucination() ) ) {
         monster &mon = *mon_;
 
         // Don't attack yourself.
@@ -1960,8 +1960,8 @@ bool monster::will_reach( const point &p )
         return false;
     }
 
-    if( has_flag( MF_SMELLS ) && g->scent.get( pos() ) > 0 &&
-        g->scent.get( { p, posz() } ) > g->scent.get( pos() ) ) {
+    if( has_flag( MF_SMELLS ) && get_scent().get( pos() ) > 0 &&
+        get_scent().get( { p, posz() } ) > get_scent().get( pos() ) ) {
         return true;
     }
 

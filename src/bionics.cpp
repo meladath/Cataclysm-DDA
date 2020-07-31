@@ -84,6 +84,7 @@ static const activity_id ACT_OPERATION( "ACT_OPERATION" );
 
 static const efftype_id effect_adrenaline( "adrenaline" );
 static const efftype_id effect_adrenaline_mycus( "adrenaline_mycus" );
+static const efftype_id effect_antifungal( "antifungal" );
 static const efftype_id effect_assisted( "assisted" );
 static const efftype_id effect_asthma( "asthma" );
 static const efftype_id effect_bleed( "bleed" );
@@ -202,7 +203,6 @@ static const std::string flag_NO_STERILE( "NO_STERILE" );
 static const std::string flag_NO_UNWIELD( "NO_UNWIELD" );
 static const std::string flag_PERPETUAL( "PERPETUAL" );
 static const std::string flag_PERSONAL( "PERSONAL" );
-static const std::string flag_SAFE_FUEL_OFF( "SAFE_FUEL_OFF" );
 static const std::string flag_SEALED( "SEALED" );
 static const std::string flag_SEMITANGIBLE( "SEMITANGIBLE" );
 
@@ -291,6 +291,7 @@ void bionic_data::load( const JsonObject &jsobj, const std::string & )
     optional( jsobj, was_loaded, "is_remote_fueled", is_remote_fueled );
 
     optional( jsobj, was_loaded, "learned_spells", learned_spells );
+    optional( jsobj, was_loaded, "learned_proficiencies", proficiencies );
     optional( jsobj, was_loaded, "canceled_mutations", canceled_mutations );
     optional( jsobj, was_loaded, "included_bionics", included_bionics );
     optional( jsobj, was_loaded, "included", included );
@@ -729,69 +730,16 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
         mod_moves( -100 );
     } else if( bio.id == bio_blood_anal ) {
         add_msg_activate();
-        static const std::map<efftype_id, std::string> bad_effects = {{
-                { effect_fungus, translate_marker( "Fungal Infection" ) },
-                { effect_dermatik, translate_marker( "Insect Parasite" ) },
-                { effect_stung, translate_marker( "Stung" ) },
-                { effect_poison, translate_marker( "Poison" ) },
-                // Those may be good for the player, but the scanner doesn't like them
-                { effect_drunk, translate_marker( "Alcohol" ) },
-                { effect_cig, translate_marker( "Nicotine" ) },
-                { effect_meth, translate_marker( "Methamphetamines" ) },
-                { effect_high, translate_marker( "Intoxicant: Other" ) },
-                { effect_weed_high, translate_marker( "THC Intoxication" ) },
-                // This little guy is immune to the blood filter though, as he lives in your bowels.
-                { effect_tapeworm, translate_marker( "Intestinal Parasite" ) },
-                { effect_bloodworms, translate_marker( "Hemolytic Parasites" ) },
-                // These little guys are immune to the blood filter too, as they live in your brain.
-                { effect_brainworms, translate_marker( "Intracranial Parasites" ) },
-                // These little guys are immune to the blood filter too, as they live in your muscles.
-                { effect_paincysts, translate_marker( "Intramuscular Parasites" ) },
-                // Tetanus infection.
-                { effect_tetanus, translate_marker( "Clostridium Tetani Infection" ) },
-                { effect_datura, translate_marker( "Anticholinergic Tropane Alkaloids" ) },
-                // TODO: Hallucinations not inducted by chemistry
-                { effect_hallu, translate_marker( "Hallucinations" ) },
-                { effect_visuals, translate_marker( "Hallucinations" ) },
+
+        std::vector<std::string> effect_descriptions;
+        std::vector<nc_color> colors;
+
+        for( auto &elem : *effects ) {
+            if( elem.first->get_blood_analysis_description().empty() ) {
+                continue;
             }
-        };
-
-        static const std::map<efftype_id, std::string> good_effects = {{
-                { effect_pkill1, translate_marker( "Minor Painkiller" ) },
-                { effect_pkill2, translate_marker( "Moderate Painkiller" ) },
-                { effect_pkill3, translate_marker( "Heavy Painkiller" ) },
-                { effect_pkill_l, translate_marker( "Slow-Release Painkiller" ) },
-
-                { effect_pblue, translate_marker( "Prussian Blue" ) },
-                { effect_iodine, translate_marker( "Potassium Iodide" ) },
-
-                { effect_took_xanax, translate_marker( "Xanax" ) },
-                { effect_took_prozac, translate_marker( "Prozac" ) },
-                { effect_took_flumed, translate_marker( "Antihistamines" ) },
-                { effect_adrenaline, translate_marker( "Adrenaline Spike" ) },
-                // Should this be described like that? Does the bionic know what is this?
-                { effect_adrenaline_mycus, translate_marker( "Mycal Spike" ) },
-            }
-        };
-
-        std::vector<std::string> good;
-        std::vector<std::string> bad;
-
-        if( get_rad() > 0 ) {
-            bad.push_back( _( "Irradiated" ) );
-        }
-
-        // TODO: Expose the player's effects to check it in a cleaner way
-        for( const auto &pr : bad_effects ) {
-            if( has_effect( pr.first ) ) {
-                bad.push_back( _( pr.second ) );
-            }
-        }
-
-        for( const auto &pr : good_effects ) {
-            if( has_effect( pr.first ) ) {
-                good.push_back( _( pr.second ) );
-            }
+            effect_descriptions.emplace_back( elem.first->get_blood_analysis_description() );
+            colors.emplace_back( elem.first->get_rating() == e_good ? c_green : c_red );
         }
 
         const int win_w = 46;
@@ -800,7 +748,7 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
         ui_adaptor ui;
         ui.on_screen_resize( [&]( ui_adaptor & ui ) {
             win_h = std::min( static_cast<size_t>( TERMY ),
-                              std::max<size_t>( 1, bad.size() + good.size() ) + 2 );
+                              std::max<size_t>( 1, effect_descriptions.size() ) + 2 );
             w = catacurses::newwin( win_h, win_w,
                                     point( ( TERMX - win_w ) / 2, ( TERMY - win_h ) / 2 ) );
             ui.position_from_window( w );
@@ -808,16 +756,11 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
         ui.mark_resize();
         ui.on_redraw( [&]( const ui_adaptor & ) {
             draw_border( w, c_red, string_format( " %s ", _( "Blood Test Results" ) ) );
-            if( good.empty() && bad.empty() ) {
+            if( effect_descriptions.empty() ) {
                 trim_and_print( w, point( 2, 1 ), win_w - 3, c_white, _( "No effects." ) );
             } else {
-                for( size_t line = 1; line < ( win_h - 1 ) && line <= good.size() + bad.size(); ++line ) {
-                    if( line <= bad.size() ) {
-                        trim_and_print( w, point( 2, line ), win_w - 3, c_red, bad[line - 1] );
-                    } else {
-                        trim_and_print( w, point( 2, line ), win_w - 3, c_green,
-                                        good[line - 1 - bad.size()] );
-                    }
+                for( size_t line = 1; line < ( win_h - 1 ) && line <= effect_descriptions.size(); ++line ) {
+                    trim_and_print( w, point( 2, line ), win_w - 3, colors[line - 1], effect_descriptions[line - 1] );
                 }
             }
             wnoutrefresh( w );
@@ -845,11 +788,11 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
                 effect_drunk, effect_cig, effect_high, effect_hallu, effect_visuals,
                 effect_pblue, effect_iodine, effect_datura,
                 effect_took_xanax, effect_took_prozac, effect_took_prozac_bad,
-                effect_took_flumed,
+                effect_took_flumed, effect_antifungal
             }
         };
 
-        for( const auto &eff : removable ) {
+        for( const string_id<effect_type> &eff : removable ) {
             remove_effect( eff );
         }
         // Purging the substance won't remove the fatigue it caused
@@ -914,7 +857,7 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
         bool no_target = true;
         bool extracted = false;
         for( item &it : here.i_at( pos() ) ) {
-            static const auto volume_per_water_charge = 500_ml;
+            static const units::volume volume_per_water_charge = 500_ml;
             if( it.is_corpse() ) {
                 const int avail = it.get_var( "remaining_water", it.volume() / volume_per_water_charge );
                 if( avail > 0 ) {
@@ -1015,7 +958,7 @@ bool Character::activate_bionic( int b, bool eff_only, bool *close_bionics_ui )
         }
         const oter_id &cur_om_ter = overmap_buffer.ter( global_omt_location() );
         /* cache g->get_temperature( player location ) since it is used twice. No reason to recalc */
-        const auto player_local_temp = g->weather.get_temperature( player_character.pos() );
+        const int player_local_temp = g->weather.get_temperature( player_character.pos() );
         /* windpower defined in internal velocity units (=.01 mph) */
         double windpower = 100.0f * get_local_windpower( g->weather.windspeed + vehwindspeed,
                            cur_om_ter, pos(), g->weather.winddirection, g->is_sheltered( pos() ) );
@@ -1318,7 +1261,7 @@ bool Character::burn_fuel( int b, bool start )
                 current_fuel_stock = std::stoi( get_value( fuel.str() ) );
             }
 
-            if( !bio.has_flag( flag_SAFE_FUEL_OFF ) &&
+            if( bio.get_safe_fuel_thresh() > 0 &&
                 ( ( get_power_level() + units::from_kilojoule( fuel_energy ) * effective_efficiency >
                     get_max_power_level() ) ||
                   ( ( ( get_power_level() + units::from_kilojoule( fuel_energy ) * effective_efficiency ) >
@@ -2149,7 +2092,7 @@ bool Character::can_uninstall_bionic( const bionic_id &b_id, player &installer, 
     // if malfunctioning bionics doesn't have associated item it gets a difficulty of 12
     int difficulty = 12;
     if( item::type_is_defined( b_id->itype() ) ) {
-        auto type = item::find_type( b_id->itype() );
+        const itype *type = item::find_type( b_id->itype() );
         if( type->bionic ) {
             difficulty = type->bionic->difficulty;
         }
@@ -2215,7 +2158,7 @@ bool Character::uninstall_bionic( const bionic_id &b_id, player &installer, bool
     // if malfunctioning bionics doesn't have associated item it gets a difficulty of 12
     int difficulty = 12;
     if( item::type_is_defined( b_id->itype() ) ) {
-        auto type = item::find_type( b_id->itype() );
+        const itype *type = item::find_type( b_id->itype() );
         if( type->bionic ) {
             difficulty = type->bionic->difficulty;
         }
@@ -2293,7 +2236,7 @@ void Character::perform_uninstall( const bionic_id &bid, int difficulty, int suc
         bionics_uninstall_failure( difficulty, success, adjusted_skill );
 
     }
-    here.invalidate_map_cache( g->get_levz() );
+    here.invalidate_map_cache( here.get_abs_sub().z );
 }
 
 bool Character::uninstall_bionic( const bionic &target_cbm, monster &installer, player &patient,
@@ -2443,7 +2386,7 @@ bool Character::can_install_bionics( const itype &type, Character &installer, bo
 
 float Character::env_surgery_bonus( int radius ) const
 {
-    float bonus = 1.0;
+    float bonus = 1.0f;
     map &here = get_map();
     for( const tripoint &cell : here.points_in_radius( pos(), radius ) ) {
         if( here.furn( cell )->surgery_skill_multiplier ) {
@@ -2540,7 +2483,8 @@ void Character::perform_install( const bionic_id &bid, const bionic_id &upbid, i
                                ( 10.0 ) );
         bionics_install_failure( bid, installer_name, difficulty, success, adjusted_skill, patient_pos );
     }
-    get_map().invalidate_map_cache( g->get_levz() );
+    map &here = get_map();
+    here.invalidate_map_cache( here.get_abs_sub().z );
 }
 
 void Character::bionics_install_failure( const bionic_id &bid, const std::string &installer,
@@ -2601,7 +2545,7 @@ void Character::bionics_install_failure( const bionic_id &bid, const std::string
                         set_max_power_level( units::from_kilojoule( rng( 0,
                                              units::to_kilojoule( get_max_power_level() ) - 25 ) ) );
                         if( is_player() ) {
-                            g->memorial().add(
+                            get_memorial().add(
                                 pgettext( "memorial_male", "Lost %d units of power capacity." ),
                                 pgettext( "memorial_female", "Lost %d units of power capacity." ),
                                 units::to_kilojoule( old_power - get_max_power_level() ) );
@@ -2749,6 +2693,10 @@ void Character::add_bionic( const bionic_id &b )
         }
     }
 
+    for( const proficiency_id &learned : b->proficiencies ) {
+        add_proficiency( learned );
+    }
+
     calc_encumbrance();
     recalc_sight_limits();
     if( !b->enchantments.empty() ) {
@@ -2783,6 +2731,10 @@ void Character::remove_bionic( const bionic_id &b )
         if( cbm_spells.count( spell_pair.first ) == 0 ) {
             magic.forget_spell( spell_pair.first );
         }
+    }
+
+    for( const proficiency_id &lost : b->proficiencies ) {
+        lose_proficiency( lost );
     }
 
     *my_bionics = new_my_bionics;
@@ -2863,7 +2815,7 @@ bool bionic::has_flag( const std::string &flag ) const
 
 int bionic::get_quality( const quality_id &quality ) const
 {
-    const auto &i = info();
+    const bionic_data &i = info();
     if( i.fake_item.is_empty() ) {
         return INT_MIN;
     }
@@ -2879,13 +2831,7 @@ bool bionic::is_this_fuel_powered( const itype_id &this_fuel ) const
 
 void bionic::toggle_safe_fuel_mod()
 {
-    if( info().fuel_opts.empty() && !info().is_remote_fueled ) {
-        return;
-    }
-    if( !has_flag( flag_SAFE_FUEL_OFF ) ) {
-        set_flag( flag_SAFE_FUEL_OFF );
-        set_safe_fuel_thresh( 2.0 );
-    } else {
+    if( !info().fuel_opts.empty() || info().is_remote_fueled ) {
         uilist tmenu;
         tmenu.text = _( "Chose Safe Fuel Level Threshold" );
         tmenu.addentry( 1, true, 'o', _( "Full Power" ) );
@@ -2898,25 +2844,24 @@ void bionic::toggle_safe_fuel_mod()
         if( get_auto_start_thresh() < 0.30 ) {
             tmenu.addentry( 4, true, 's', _( "Above 30 %%" ) );
         }
+        tmenu.addentry( 5, true, 'd', _( "Disabled" ) );
         tmenu.query();
 
         switch( tmenu.ret ) {
             case 1:
-                remove_flag( flag_SAFE_FUEL_OFF );
-                set_safe_fuel_thresh( 1.0 );
+                set_safe_fuel_thresh( 1.0f );
                 break;
             case 2:
-                remove_flag( flag_SAFE_FUEL_OFF );
-                set_safe_fuel_thresh( 0.80 );
+                set_safe_fuel_thresh( 0.80f );
                 break;
             case 3:
-                remove_flag( flag_SAFE_FUEL_OFF );
-                set_safe_fuel_thresh( 0.55 );
+                set_safe_fuel_thresh( 0.55f );
                 break;
             case 4:
-                remove_flag( flag_SAFE_FUEL_OFF );
-                set_safe_fuel_thresh( 0.30 );
+                set_safe_fuel_thresh( 0.30f );
                 break;
+            case 5:
+                set_safe_fuel_thresh( -1.0f );
             default:
                 break;
         }
@@ -3111,7 +3056,7 @@ void Character::introduce_into_anesthesia( const time_duration &duration, player
 
     if( has_effect( effect_narcosis ) ) {
         const time_duration remaining_time = get_effect_dur( effect_narcosis );
-        if( remaining_time <= duration ) {
+        if( remaining_time < duration ) {
             const time_duration top_off_time = duration - remaining_time;
             add_effect( effect_narcosis, top_off_time );
             fall_asleep( top_off_time );

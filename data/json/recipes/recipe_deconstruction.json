@@ -2051,7 +2051,7 @@
     "result": "glass",
     "type": "uncraft",
     "time": "1 s",
-    "components": [ [ [ "glass_shard", 4 ] ] ]
+    "components": [ [ [ "glass_shard", 3 ] ] ]
   },
   {
     "result": "glass_bowl",
@@ -2064,6 +2064,54 @@
     "type": "uncraft",
     "time": "1 s",
     "components": [ [ [ "glass_shard", 4 ] ] ]
+  },
+  {
+    "result": "jar_3l_glass_sealed",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 10 ] ] ]
+  },
+  {
+    "result": "bottle_glass",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 3 ] ] ]
+  },
+  {
+    "result": "flask_glass",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 2 ] ] ]
+  },
+  {
+    "result": "jar_glass_sealed",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 4 ] ] ]
+  },
+  {
+    "result": "beaker",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 2 ] ] ]
+  },
+  {
+    "result": "gradcylinder",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 2 ] ] ]
+  },
+  {
+    "result": "fish_bowl",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 7 ] ] ]
+  },
+  {
+    "result": "mirror",
+    "type": "uncraft",
+    "time": "1 s",
+    "components": [ [ [ "glass_shard", 3 ] ] ]
   },
   {
     "result": "glass_sheet",
@@ -3849,7 +3897,7 @@
     "result": "fluid_preserved_brain",
     "type": "uncraft",
     "time": "6 s",
-    "components": [ [ [ "chem_formaldehyde", 10 ] ], [ [ "human_brain_embalmed", 5 ] ], [ [ "jar_3l_glass", 1 ] ] ],
+    "components": [ [ [ "chem_formaldehyde", 10 ] ], [ [ "human_brain_embalmed", 5 ] ], [ [ "jar_3l_glass_sealed", 1 ] ] ],
     "flags": [ "BLIND_EASY" ]
   },
   {

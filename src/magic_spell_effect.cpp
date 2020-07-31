@@ -143,7 +143,7 @@ void spell_effect::pain_split( const spell &sp, Creature &caster, const tripoint
     int total_hp = 0; // total hp among limbs
 
     for( const std::pair<const bodypart_str_id, bodypart> &elem : p->get_body() ) {
-        if( elem.first == bodypart_str_id( "num_bp" ) ) {
+        if( elem.first == bodypart_str_id( "bp_null" ) ) {
             continue;
         }
         num_limbs++;
@@ -386,7 +386,7 @@ static std::set<tripoint> spell_effect_area( const spell &sp, const tripoint &ta
 
     // Draw the explosion
     std::map<tripoint, nc_color> explosion_colors;
-    for( auto &pt : targets ) {
+    for( const tripoint &pt : targets ) {
         explosion_colors[pt] = sp.damage_type_color();
     }
 
@@ -845,7 +845,7 @@ void spell_effect::timed_event( const spell &sp, Creature &caster, const tripoin
     }
 
     sp.make_sound( caster.pos() );
-    g->timed_events.add( spell_event, calendar::turn + sp.duration_turns() );
+    get_timed_events().add( spell_event, calendar::turn + sp.duration_turns() );
 }
 
 static bool is_summon_friendly( const spell &sp )
@@ -1011,8 +1011,8 @@ void spell_effect::map( const spell &sp, Creature &caster, const tripoint & )
         // revealing the map only makes sense for the avatar
         return;
     }
-    const tripoint center = you->global_omt_location();
-    overmap_buffer.reveal( center.xy(), sp.aoe(), center.z );
+    const tripoint_abs_omt center = you->global_omt_location();
+    overmap_buffer.reveal( center.xy(), sp.aoe(), center.z() );
 }
 
 void spell_effect::morale( const spell &sp, Creature &caster, const tripoint &target )

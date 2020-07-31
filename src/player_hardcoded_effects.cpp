@@ -48,6 +48,7 @@ static const efftype_id effect_adrenaline( "adrenaline" );
 static const efftype_id effect_alarm_clock( "alarm_clock" );
 static const efftype_id effect_antibiotic( "antibiotic" );
 static const efftype_id effect_anemia( "anemia" );
+static const efftype_id effect_antifungal( "antifungal" );
 static const efftype_id effect_asthma( "asthma" );
 static const efftype_id effect_attention( "attention" );
 static const efftype_id effect_bite( "bite" );
@@ -137,14 +138,38 @@ static void eff_fun_spores( player &u, effect &it )
         u.add_effect( effect_fungus, 1_turns, num_bp, true );
     }
 }
+static void eff_fun_antifungal( player &u, effect & )
+{
+    // antifungal drugs are deadly poison for marloss people
+    if( u.has_trait( trait_THRESH_MYCUS ) && one_in( 30 ) ) {
+        if( one_in( 10 ) ) {
+            u.add_msg_player_or_npc( m_bad, _( "Something burns you from the inside." ),
+                                     _( "<npcname> shivers from pain." ) );
+        }
+        u.mod_pain( 1 );
+        // not using u.get_random_body_part() as it is weighted & not fully random
+        std::vector<bodypart_id> bparts = u.get_all_body_parts( true );
+        bodypart_id random_bpart = bparts[ rng( 0, bparts.size() - 1 ) ];
+        u.apply_damage( nullptr, random_bpart, 1 );
+    }
+}
 static void eff_fun_fungus( player &u, effect &it )
 {
-    const time_duration dur = it.get_duration();
     const int intense = it.get_intensity();
-    const int bonus = u.get_healthy() / 10 + ( u.resists_effect( it ) ? 100 : 0 );
+    const bool resists = u.resists_effect( it );
+    const int bonus = u.get_healthy() / 10 + ( resists ? 100 : 0 );
+
+    // clock the progress
+    // hard reverse the clock if you resist fungus
+    if( resists ) {
+        it.mod_duration( -5_turns );
+    } else {
+        it.mod_duration( 1_turns );
+    }
+
     switch( intense ) {
         case 1:
-            // First hour symptoms
+            // 0-6 hours symptoms
             if( one_in( 960 + bonus * 6 ) ) {
                 u.cough( true );
             }
@@ -154,23 +179,19 @@ static void eff_fun_fungus( player &u, effect &it )
             if( one_in( 600 + bonus * 6 ) ) {
                 u.add_msg_if_player( m_warning, _( "You smell and taste mushrooms." ) );
             }
-            it.mod_duration( 1_turns );
-            if( dur > 1_hours ) {
-                it.mod_intensity( 1 );
-            }
             break;
         case 2:
-            // Five hours of worse symptoms
+            // 6-12 hours of worse symptoms
             if( one_in( 3600 + bonus * 18 ) ) {
                 u.add_msg_if_player( m_bad,  _( "You spasm suddenly!" ) );
                 u.moves -= 100;
-                u.apply_damage( nullptr, bodypart_id( "torso" ), 5 );
+                u.apply_damage( nullptr, bodypart_id( "torso" ), resists ? rng( 1, 5 ) : 5 );
             }
             if( x_in_y( u.vomit_mod(), ( 4800 + bonus * 24 ) ) || one_in( 12000 + bonus * 60 ) ) {
                 u.add_msg_player_or_npc( m_bad, _( "You vomit a thick, gray goop." ),
                                          _( "<npcname> vomits a thick, gray goop." ) );
 
-                const int awfulness = rng( 0, 70 );
+                const int awfulness = rng( 0, resists ? rng( 1, 70 ) : 70 );
                 u.moves = -200;
                 u.mod_hunger( awfulness );
                 u.mod_thirst( awfulness );
@@ -178,13 +199,9 @@ static void eff_fun_fungus( player &u, effect &it )
                 u.apply_damage( nullptr, bodypart_id( "torso" ), awfulness / std::max( u.str_cur,
                                 1 ) ); // can't be healthy
             }
-            it.mod_duration( 1_turns );
-            if( dur > 6_hours ) {
-                it.mod_intensity( 1 );
-            }
             break;
         case 3:
-            // Permanent symptoms
+            // Permanent symptoms, 12+ hours
             if( one_in( 6000 + bonus * 48 ) ) {
                 u.add_msg_player_or_npc( m_bad,  _( "You vomit thousands of live spores!" ),
                                          _( "<npcname> vomits thousands of live spores!" ) );
@@ -199,7 +216,7 @@ static void eff_fun_fungus( player &u, effect &it )
                     fe.fungalize( sporep, &u, 0.25 );
                 }
                 // We're fucked
-            } else if( one_in( 36000 + bonus * 120 ) ) {
+            } else if( one_in( 36000 + bonus * 240 ) ) {
                 if( u.is_limb_broken( bodypart_id( "arm_l" ) ) || u.is_limb_broken( bodypart_id( "arm_r" ) ) ) {
                     if( u.is_limb_broken( bodypart_id( "arm_l" ) ) && u.is_limb_broken( bodypart_id( "arm_r" ) ) ) {
                         u.add_msg_player_or_npc( m_bad,
@@ -441,7 +458,8 @@ static void eff_fun_hot( player &u, effect &it )
     }
     // Hothead effects are a special snowflake
     if( bp == bp_head && intense >= 2 ) {
-        if( one_in( std::max( 25, std::min( 89500, 90000 - u.temp_cur[bp_head] ) ) ) ) {
+        if( one_in( std::max( 25, std::min( 89500,
+                                            90000 - u.get_part_temp_cur( bodypart_id( "head" ) ) ) ) ) ) {
             u.vomit();
         }
         if( !u.has_effect( effect_sleep ) && one_in( 2400 ) ) {
@@ -472,7 +490,7 @@ static void eff_fun_frostbite( player &u, effect &it )
 
 void player::hardcoded_effects( effect &it )
 {
-    if( auto buff = ma_buff::from_effect( it ) ) {
+    if( const ma_buff *buff = ma_buff::from_effect( it ) ) {
         if( buff->is_valid_character( *this ) ) {
             buff->apply_character( *this );
         } else {
@@ -485,6 +503,7 @@ void player::hardcoded_effects( effect &it )
             { effect_onfire, eff_fun_onfire },
             { effect_spores, eff_fun_spores },
             { effect_fungus, eff_fun_fungus },
+            { effect_antifungal, eff_fun_antifungal },
             { effect_rat, eff_fun_rat },
             { effect_bleed, eff_fun_bleed },
             { effect_hallu, eff_fun_hallu },
@@ -973,10 +992,10 @@ void player::hardcoded_effects( effect &it )
                         break;
                     case 4:
                         warning = _( "You are sweating profusely, but you feel cold." );
-                        temp_conv[bp_hand_l] -= 1000 * intense;
-                        temp_conv[bp_hand_r] -= 1000 * intense;
-                        temp_conv[bp_foot_l] -= 1000 * intense;
-                        temp_conv[bp_foot_r] -= 1000 * intense;
+                        mod_part_temp_conv( bodypart_id( "hand_l" ), - 1000 * intense );
+                        mod_part_temp_conv( bodypart_id( "hand_r" ), -1000 * intense );
+                        mod_part_temp_conv( bodypart_id( "foot_l" ), -1000 * intense );
+                        mod_part_temp_conv( bodypart_id( "foot_r" ), -1000 * intense );
                         break;
                     case 5:
                         warning = _( "You huff and puff.  Your breath is rapid and shallow." );
@@ -1029,13 +1048,13 @@ void player::hardcoded_effects( effect &it )
             switch( dice( 1, 9 ) ) {
                 case 1:
                     add_msg_if_player( m_bad, _( "Your hands feel unusually cold." ) );
-                    temp_conv[bp_hand_l] -= 2000;
-                    temp_conv[bp_hand_r] -= 2000;
+                    mod_part_temp_conv( bodypart_id( "hand_l" ), -2000 );
+                    mod_part_temp_conv( bodypart_id( "hand_r" ), -2000 );
                     break;
                 case 2:
                     add_msg_if_player( m_bad, _( "Your feet feel unusualy cold." ) );
-                    temp_conv[bp_foot_l] -= 2000;
-                    temp_conv[bp_foot_r] -= 2000;
+                    mod_part_temp_conv( bodypart_id( "foot_l" ), -2000 );
+                    mod_part_temp_conv( bodypart_id( "foot_r" ), -2000 );
                     break;
                 case 3:
                     add_msg_if_player( m_bad, _( "Your skin looks very pale." ) );
@@ -1129,7 +1148,7 @@ void player::hardcoded_effects( effect &it )
     } else if( id == effect_grabbed ) {
         set_num_blocks_bonus( get_num_blocks_bonus() - 1 );
         int zed_number = 0;
-        for( auto &dest : here.points_in_radius( pos(), 1, 0 ) ) {
+        for( const tripoint &dest : here.points_in_radius( pos(), 1, 0 ) ) {
             const monster *const mon = g->critter_at<monster>( dest );
             if( mon && mon->has_effect( effect_grabbing ) ) {
                 zed_number += mon->get_grab_strength();
@@ -1424,25 +1443,26 @@ void player::hardcoded_effects( effect &it )
         if( !woke_up && !has_effect( effect_narcosis ) ) {
             // Cold or heat may wake you up.
             // Player will sleep through cold or heat if fatigued enough
-            for( const body_part bp : all_body_parts ) {
-                if( temp_cur[bp] < BODYTEMP_VERY_COLD - get_fatigue() / 2 ) {
+            for( const bodypart_id &bp : get_all_body_parts() ) {
+                const int curr_temp = get_part_temp_cur( bp );
+                if( curr_temp < BODYTEMP_VERY_COLD - get_fatigue() / 2 ) {
                     if( one_in( 30000 ) ) {
                         add_msg_if_player( _( "You toss and turn trying to keep warm." ) );
                     }
-                    if( temp_cur[bp] < BODYTEMP_FREEZING - get_fatigue() / 2 ||
-                        one_in( temp_cur[bp] * 6 + 30000 ) ) {
+                    if( curr_temp < BODYTEMP_FREEZING - get_fatigue() / 2 ||
+                        one_in( curr_temp * 6 + 30000 ) ) {
                         add_msg_if_player( m_bad, _( "It's too cold to sleep." ) );
                         // Set ourselves up for removal
                         it.set_duration( 0_turns );
                         woke_up = true;
                         break;
                     }
-                } else if( temp_cur[bp] > BODYTEMP_VERY_HOT + get_fatigue() / 2 ) {
+                } else if( curr_temp > BODYTEMP_VERY_HOT + get_fatigue() / 2 ) {
                     if( one_in( 30000 ) ) {
                         add_msg_if_player( _( "You toss and turn in the heat." ) );
                     }
-                    if( temp_cur[bp] > BODYTEMP_SCORCHING + get_fatigue() / 2 ||
-                        one_in( 90000 - temp_cur[bp] ) ) {
+                    if( curr_temp > BODYTEMP_SCORCHING + get_fatigue() / 2 ||
+                        one_in( 90000 - curr_temp ) ) {
                         add_msg_if_player( m_bad, _( "It's too hot to sleep." ) );
                         // Set ourselves up for removal
                         it.set_duration( 0_turns );

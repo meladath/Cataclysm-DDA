@@ -129,14 +129,6 @@ bool pocket_favorite_callback::key( const input_context &, const input_event &ev
     const std::string whitelist_string = whitelist ? _( "whitelist" ) : _( "blacklist" );
     const bool item_id = input == 'i';
     const bool cat_id = input == 'c';
-    std::string id_string;
-
-    if( item_id ) {
-        id_string = _( "item id" );
-    } else if( cat_id ) {
-        id_string = _( "item category" );
-    }
-
     uilist selector_menu;
 
     if( item_id ) {
@@ -451,12 +443,14 @@ void item_contents::fill_with( const item &contained )
     }
 }
 
-item_pocket *item_contents::best_pocket( const item &it, bool nested )
+std::pair<item_location, item_pocket *> item_contents::best_pocket( const item &it,
+        item_location &parent, bool nested )
 {
     if( !can_contain( it ).success() ) {
-        return nullptr;
+        return { item_location(), nullptr };
     }
-    item_pocket *ret = nullptr;
+    std::pair<item_location, item_pocket *> ret;
+    ret.second = nullptr;
     for( item_pocket &pocket : contents ) {
         if( !pocket.is_type( item_pocket::pocket_type::CONTAINER ) ) {
             // best pocket is for picking stuff up.
@@ -471,15 +465,14 @@ item_pocket *item_contents::best_pocket( const item &it, bool nested )
             // that needs to be something a player explicitly does
             continue;
         }
-        if( ret == nullptr ) {
-            if( pocket.can_contain( it ).success() ) {
-                ret = &pocket;
-            }
-        } else if( pocket.can_contain( it ).success() && ret->better_pocket( pocket, it ) ) {
-            ret = &pocket;
+        if( ( ret.second == nullptr && pocket.can_contain( it ).success() ) ||
+            ( pocket.can_contain( it ).success() && ret.second->better_pocket( pocket, it ) ) ) {
+            ret.first = parent;
+            ret.second = &pocket;
             for( item *contained : all_items_top( item_pocket::pocket_type::CONTAINER ) ) {
-                item_pocket *internal_pocket = contained->contents.best_pocket( it, nested );
-                if( internal_pocket != nullptr && ret->better_pocket( pocket, it ) ) {
+                std::pair<item_location, item_pocket *> internal_pocket =
+                    contained->contents.best_pocket( it, parent, true );
+                if( internal_pocket.second != nullptr && ret.second->better_pocket( pocket, it ) ) {
                     ret = internal_pocket;
                 }
             }
@@ -716,11 +709,11 @@ bool item_contents::will_spill() const
     return false;
 }
 
-bool item_contents::spill_open_pockets( Character &guy )
+bool item_contents::spill_open_pockets( Character &guy, const item *avoid )
 {
     for( item_pocket &pocket : contents ) {
         if( pocket.is_type( item_pocket::pocket_type::CONTAINER ) && pocket.will_spill() ) {
-            pocket.handle_liquid_or_spill( guy );
+            pocket.handle_liquid_or_spill( guy, avoid );
             if( !pocket.empty() ) {
                 return false;
             }
@@ -782,10 +775,27 @@ bool item_contents::seal_all_pockets()
     return any_sealed;
 }
 
-void item_contents::migrate_item( item &obj, const std::set<itype_id> &migrations )
+item_contents::sealed_summary item_contents::get_sealed_summary() const
 {
-    for( item_pocket &pocket : contents ) {
-        pocket.migrate_item( obj, migrations );
+    bool any_sealed = false;
+    bool any_unsealed = false;
+    for( const item_pocket &pocket : contents ) {
+        if( pocket.is_type( item_pocket::pocket_type::CONTAINER ) ) {
+            if( pocket.sealed() ) {
+                any_sealed = true;
+            } else {
+                any_unsealed = true;
+            }
+        }
+    }
+    if( any_sealed ) {
+        if( any_unsealed ) {
+            return sealed_summary::part_sealed;
+        } else {
+            return sealed_summary::all_sealed;
+        }
+    } else {
+        return sealed_summary::unsealed;
     }
 }
 

@@ -316,8 +316,8 @@ std::vector<sphere> npc::find_dangerous_explosives() const
     const auto active_items = get_map().get_active_items_in_radius( pos(), MAX_VIEW_DISTANCE,
                               special_item_type::explosive );
 
-    for( const auto &elem : active_items ) {
-        const auto use = elem->type->get_use( "explosion" );
+    for( const item_location &elem : active_items ) {
+        const use_function *use = elem->type->get_use( "explosion" );
 
         if( !use ) {
             continue;
@@ -376,6 +376,22 @@ void npc::assess_danger()
         max_range = *confident_range_cache;
     }
     Character &player_character = get_player_character();
+    const bool self_defense_only = rules.engagement == combat_engagement::NO_MOVE ||
+                                   rules.engagement == combat_engagement::NONE;
+    const bool no_fighting = rules.has_flag( ally_rule::forbid_engage );
+    const bool must_retreat = rules.has_flag( ally_rule::follow_close ) &&
+                              !too_close( pos(), player_character.pos(), follow_distance() );
+
+    if( is_player_ally() ) {
+        if( rules.engagement == combat_engagement::FREE_FIRE ) {
+            def_radius = std::max( 6, max_range );
+        } else if( self_defense_only ) {
+            def_radius = max_range;
+        } else if( no_fighting ) {
+            def_radius = 1;
+        }
+    }
+
     const auto ok_by_rules = [max_range, def_radius, this, &player_character]( const Creature & c,
     int dist, int scaled_dist ) {
         // If we're forbidden to attack, no need to check engagement rules
@@ -425,9 +441,7 @@ void npc::assess_danger()
             }
         }
     }
-    if( is_player_ally() && rules.engagement == combat_engagement::FREE_FIRE ) {
-        def_radius = std::max( 6, max_range );
-    }
+
     // find our Character friends and enemies
     std::vector<weak_ptr_fast<Creature>> hostile_guys;
     for( const npc &guy : g->all_npcs() ) {
@@ -470,6 +484,9 @@ void npc::assess_danger()
                 warn_about( "monster", 10_minutes, critter.type->nname(), dist, critter.pos() );
             }
         }
+        if( must_retreat || no_fighting ) {
+            continue;
+        }
         // ignore targets behind glass even if we can see them
         if( !clear_shot_reach( pos(), critter.pos(), false ) ) {
             continue;
@@ -481,10 +498,10 @@ void npc::assess_danger()
                                          NPC_DANGER_VERY_LOW );
         ai_cache.total_danger += critter_danger / scaled_distance;
 
-        // don't ignore monsters that are too close or too close to an ally
+        // don't ignore monsters that are too close or too close to an ally if we can move
         bool is_too_close = dist <= def_radius;
         for( const weak_ptr_fast<Creature> &guy : ai_cache.friends ) {
-            if( is_too_close ) {
+            if( is_too_close || self_defense_only ) {
                 break;
             }
             // HACK: Bit of a dirty hack - sometimes shared_from, returns nullptr or bad weak_ptr for
@@ -526,12 +543,18 @@ void npc::assess_danger()
 
         int scaled_distance = std::max( 1, ( 100 * dist ) / foe.get_speed() );
         ai_cache.total_danger += foe_threat / scaled_distance;
+        if( must_retreat || no_fighting ) {
+            return 0.0f;
+        }
         // ignore targets behind glass even if we can see them
         if( !clear_shot_reach( pos(), foe.pos(), false ) ) {
             return 0.0f;
         }
         bool is_too_close = dist <= def_radius;
         for( const weak_ptr_fast<Creature> &guy : ai_cache.friends ) {
+            if( self_defense_only ) {
+                break;
+            }
             is_too_close |= too_close( foe.pos(), guy.lock()->pos(), def_radius );
             if( is_too_close ) {
                 break;
@@ -610,7 +633,7 @@ float npc::character_danger( const Character &uc ) const
 {
     // TODO: Remove this when possible
     const player &u = dynamic_cast<const player &>( uc );
-    float ret = 0.0;
+    float ret = 0.0f;
     bool u_gun = u.weapon.is_gun();
     bool my_gun = weapon.is_gun();
     double u_weap_val = u.weapon_value( u.weapon );
@@ -819,6 +842,12 @@ void npc::move()
         }
     }
 
+    // check if in vehicle before doing any other follow activities
+    if( action == npc_undecided && is_walking_with() && player_character.in_vehicle &&
+        !in_vehicle ) {
+        action = npc_follow_embarked;
+    }
+
     if( action == npc_undecided && is_walking_with() && rules.has_flag( ally_rule::follow_close ) &&
         rl_dist( pos(), player_character.pos() ) > follow_distance() ) {
         action = npc_follow_player;
@@ -857,7 +886,8 @@ void npc::move()
         }
     }
     if( action == npc_undecided ) {
-        // an interrupted activity can cause this situation. stops allied NPCs zooming off like random NPCs
+        // an interrupted activity can cause this situation. stops allied NPCs zooming off
+        // like random NPCs
         if( attitude == NPCATT_ACTIVITY && !activity ) {
             revert_after_activity();
             if( is_ally( player_character ) ) {
@@ -1675,7 +1705,7 @@ bool npc::recharge_cbm()
         } else {
             const std::function<bool( const item & )> fuel_filter = [bid]( const item & it ) {
                 for( const itype_id &fid : bid->fuel_opts ) {
-                    return it.typeId() == fid;
+                    return ( it.typeId() == fid ) || ( it.is_magazine() && it.ammo_current() == fid );
                 }
                 return false;
             };
@@ -2124,7 +2154,7 @@ bool npc::enough_time_to_reload( const item &gun ) const
     const float target_speed = target->speed_rating();
     const float turns_til_reached = distance / target_speed;
     if( target->is_player() || target->is_npc() ) {
-        auto &c = dynamic_cast<const Character &>( *target );
+        const auto &c = dynamic_cast<const Character &>( *target );
         // TODO: Allow reloading if the player has a low accuracy gun
         if( sees( c ) && c.weapon.is_gun() && rltime > 200 &&
             c.weapon.gun_range( true ) > distance + turns_til_reloaded / target_speed ) {
@@ -2575,7 +2605,7 @@ void npc::worker_downtime()
         return;
     }
     //  already know of a chair, go there
-    if( chair_pos != no_goal_point ) {
+    if( chair_pos != tripoint_min ) {
         if( here.has_flag_furn( "CAN_SIT", here.getlocal( chair_pos ) ) ) {
             update_path( here.getlocal( chair_pos ) );
             if( pos() == here.getlocal( chair_pos ) || path.empty() ) {
@@ -2584,10 +2614,10 @@ void npc::worker_downtime()
             } else {
                 move_to_next();
             }
-            wander_pos = no_goal_point;
+            wander_pos = tripoint_min;
             return;
         } else {
-            chair_pos = no_goal_point;
+            chair_pos = tripoint_min;
         }
     } else {
         // find a chair
@@ -2604,13 +2634,13 @@ void npc::worker_downtime()
     }
     // we got here if there are no chairs available.
     // wander back to near the bulletin board of the camp.
-    if( wander_pos != no_goal_point ) {
+    if( wander_pos != tripoint_min ) {
         update_path( here.getlocal( wander_pos ) );
         if( pos() == here.getlocal( wander_pos ) || path.empty() ) {
             move_pause();
             path.clear();
             if( one_in( 30 ) ) {
-                wander_pos = no_goal_point;
+                wander_pos = tripoint_min;
             }
         } else {
             move_to_next();
@@ -2803,7 +2833,7 @@ void npc::find_item()
             return;
         }
         std::vector<npc *> followers;
-        for( auto &elem : g->get_follower_list() ) {
+        for( const character_id &elem : g->get_follower_list() ) {
             shared_ptr_fast<npc> npc_to_get = overmap_buffer.find_npc( elem );
             if( !npc_to_get ) {
                 continue;
@@ -3532,7 +3562,7 @@ bool npc::alt_attack()
     const auto inv_all = items_with( []( const item & ) {
         return true;
     } );
-    for( auto &it : inv_all ) {
+    for( item *it : inv_all ) {
         // TODO: Cached values - an itype slot maybe?
         check_alt_item( *it );
     }
@@ -3831,7 +3861,7 @@ bool npc::consume_food_from_camp()
     }
     Character &player_character = get_player_character();
     cata::optional<basecamp *> potential_bc;
-    for( const tripoint &camp_pos : player_character.camps ) {
+    for( const tripoint_abs_omt &camp_pos : player_character.camps ) {
         if( rl_dist( camp_pos, global_omt_location() ) < 3 ) {
             potential_bc = overmap_buffer.find_camp( camp_pos.xy() );
             if( potential_bc ) {
@@ -3953,7 +3983,7 @@ void npc::mug_player( Character &mark )
     const auto inv_valuables = items_with( [this]( const item & itm ) {
         return value( itm ) > 0;
     } );
-    for( auto &it : inv_valuables ) {
+    for( item *it : inv_valuables ) {
         item &front_stack = *it; // is this safe?
         if( value( front_stack ) >= best_value &&
             can_pickVolume( front_stack, true ) &&
@@ -4088,7 +4118,7 @@ void npc::reach_omt_destination()
     if( path.size() > 1 ) {
         // No point recalculating the path to get home
         move_to_next();
-    } else if( guard_pos != no_goal_point ) {
+    } else if( guard_pos != tripoint_min ) {
         update_path( here.getlocal( guard_pos ) );
         move_to_next();
     } else {
@@ -4121,9 +4151,9 @@ void npc::set_omt_destination()
         return;
     }
 
-    tripoint surface_omt_loc = global_omt_location();
+    tripoint_abs_omt surface_omt_loc = global_omt_location();
     // We need that, otherwise find_closest won't work properly
-    surface_omt_loc.z = 0;
+    surface_omt_loc.z() = 0;
 
     // also, don't bother looking if the CITY_SIZE is 0, just go somewhere at random
     const int city_size = get_option<int>( "CITY_SIZE" );
@@ -4181,7 +4211,7 @@ void npc::set_omt_destination()
     DebugLog( D_INFO, DC_ALL ) << "npc::set_omt_destination - new goal for NPC [" << get_name() <<
                                "] with [" << get_need_str_id( needs.front() ) <<
                                "] is [" << dest_type <<
-                               "] in [" << goal.x << "," << goal.y << "," << goal.z << "].";
+                               "] in " << goal.to_string() << ".";
 }
 
 void npc::go_to_omt_destination()
@@ -4201,7 +4231,7 @@ void npc::go_to_omt_destination()
         reach_omt_destination();
         return;
     }
-    const tripoint omt_pos = global_omt_location();
+    const tripoint_abs_omt omt_pos = global_omt_location();
     if( goal == omt_pos ) {
         // We're at our desired map square!  Pause to keep the NPC infinite loop counter happy
         move_pause();
@@ -4219,8 +4249,8 @@ void npc::go_to_omt_destination()
         omt_path.pop_back();
     }
     if( !omt_path.empty() ) {
-        point omt_diff = omt_path.back().xy() - omt_pos.xy();
-        if( omt_diff.x > 3 || omt_diff.x < -3 || omt_diff.y > 3 || omt_diff.y < -3 ) {
+        point_rel_omt omt_diff = omt_path.back().xy() - omt_pos.xy();
+        if( omt_diff.x() > 3 || omt_diff.x() < -3 || omt_diff.y() > 3 || omt_diff.y() < -3 ) {
             // we've gone wandering somehow, reset destination.
             if( !is_player_ally() ) {
                 set_omt_destination();
@@ -4230,7 +4260,9 @@ void npc::go_to_omt_destination()
             return;
         }
     }
-    tripoint sm_tri = here.getlocal( sm_to_ms_copy( omt_to_sm_copy( omt_path.back() ) ) );
+    // TODO: fix point types
+    tripoint sm_tri =
+        here.getlocal( project_to<coords::ms>( omt_path.back() ).raw() );
     tripoint centre_sub = sm_tri + point( SEEX, SEEY );
     if( !here.passable( centre_sub ) ) {
         auto candidates = here.points_in_radius( centre_sub, 2 );
@@ -4242,8 +4274,7 @@ void npc::go_to_omt_destination()
         }
     }
     path = here.route( pos(), centre_sub, get_pathfinding_settings(), get_path_avoid() );
-    add_msg( m_debug, "%s going (%d,%d,%d)->(%d,%d,%d)", name,
-             omt_pos.x, omt_pos.y, omt_pos.z, goal.x, goal.y, goal.z );
+    add_msg( m_debug, "%s going %s->%s", name, omt_pos.to_string(), goal.to_string() );
 
     if( !path.empty() ) {
         move_to_next();

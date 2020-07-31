@@ -11,7 +11,6 @@
 #include "clone_ptr.h"
 #include "item_location.h"
 #include "item.h"
-#include "memory_fast.h"
 #include "point.h"
 #include "type_id.h"
 #include "units.h"
@@ -109,17 +108,12 @@ class activity_actor
 
 class aim_activity_actor : public activity_actor
 {
-    public:
-        enum class WeaponSource : int {
-            Wielded,
-            Bionic,
-            Mutation,
-            NumWeaponSources
-        };
-
-        WeaponSource weapon_source = WeaponSource::Wielded;
-        shared_ptr_fast<item> fake_weapon = nullptr;
+    private:
+        cata::optional<item> fake_weapon;
         units::energy bp_cost_per_shot = 0_J;
+        std::vector<tripoint> fin_trajectory;
+
+    public:
         bool first_turn = true;
         std::string action = "";
         bool snap_to_target = false;
@@ -127,14 +121,11 @@ class aim_activity_actor : public activity_actor
         tripoint initial_view_offset;
         /** Target UI requested to abort aiming */
         bool aborted = false;
-        /** Target UI requested to fire */
-        bool finished = false;
         /**
          * Target UI requested to abort aiming and reload weapon
          * Implies aborted = true
          */
         bool reload_requested = false;
-        std::vector<tripoint> fin_trajectory;
 
         aim_activity_actor();
 
@@ -515,6 +506,7 @@ class consume_activity_actor : public activity_actor
         item_location consume_location;
         item consume_item;
         std::vector<int> consume_menu_selections;
+        std::vector<item_location> consume_menu_selected_items;
         std::string consume_menu_filter;
         bool canceled = false;
         /**
@@ -528,8 +520,10 @@ class consume_activity_actor : public activity_actor
     public:
         consume_activity_actor( const item_location &consume_location,
                                 std::vector<int> consume_menu_selections,
+                                const std::vector<item_location> &consume_menu_selected_items,
                                 const std::string &consume_menu_filter ) :
             consume_location( consume_location ), consume_menu_selections( consume_menu_selections ),
+            consume_menu_selected_items( consume_menu_selected_items ),
             consume_menu_filter( consume_menu_filter ) {}
 
         consume_activity_actor( const item_location &consume_location ) :

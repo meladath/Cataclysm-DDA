@@ -144,9 +144,9 @@ npc::npc()
     position.z = 500;
     last_player_seen_pos = cata::nullopt;
     last_seen_player_turn = 999;
-    wanted_item_pos = no_goal_point;
-    guard_pos = no_goal_point;
-    goal = no_goal_point;
+    wanted_item_pos = tripoint_min;
+    guard_pos = tripoint_min;
+    goal = tripoint_abs_omt( tripoint_min );
     fetching_item = false;
     has_new_items = true;
     worst_item_value = 0;
@@ -682,10 +682,10 @@ void npc::set_known_to_u( bool known )
 void npc::setpos( const tripoint &pos )
 {
     position = pos;
-    const point pos_om_old = sm_to_om_copy( submap_coords );
-    submap_coords.x = g->get_levx() + pos.x / SEEX;
-    submap_coords.y = g->get_levy() + pos.y / SEEY;
-    const point pos_om_new = sm_to_om_copy( submap_coords );
+    const point_abs_om pos_om_old( sm_to_om_copy( submap_coords ) );
+    submap_coords = get_map().get_abs_sub().xy() + point( pos.x / SEEX, pos.y / SEEY );
+    // TODO: fix point types
+    const point_abs_om pos_om_new( sm_to_om_copy( submap_coords ) );
     if( !is_fake() && pos_om_old != pos_om_new ) {
         overmap &om_old = overmap_buffer.get( pos_om_old );
         overmap &om_new = overmap_buffer.get( pos_om_new );
@@ -701,9 +701,10 @@ void npc::setpos( const tripoint &pos )
 
 void npc::travel_overmap( const tripoint &pos )
 {
-    const point pos_om_old = sm_to_om_copy( submap_coords );
+    // TODO: fix point types
+    const point_abs_om pos_om_old( sm_to_om_copy( submap_coords ) );
     spawn_at_sm( pos );
-    const point pos_om_new = sm_to_om_copy( submap_coords );
+    const point_abs_om pos_om_new( sm_to_om_copy( submap_coords ) );
     if( global_omt_location() == goal ) {
         reach_omt_destination();
     }
@@ -746,7 +747,7 @@ void npc::place_on_map()
     // "submap_coords.x * SEEX + posx() % SEEX" (analog for y).
     // The main map assumes that pos is in its own (local to the main map)
     // coordinate system. We have to change pos to match that assumption
-    const point dm( submap_coords + point( -g->get_levx(), -g->get_levy() ) );
+    const point dm( submap_coords - get_map().get_abs_sub().xy() );
     const point offset( position.x % SEEX, position.y % SEEY );
     // value of "submap_coords.x * SEEX + posx()" is unchanged
     setpos( tripoint( offset.x + dm.x * SEEX, offset.y + dm.y * SEEY, posz() ) );
@@ -1129,7 +1130,8 @@ void npc::stow_item( item &it )
                 add_msg_if_npc( m_info, _( "<npcname> puts away the %1$s in the %2$s." ),
                                 weapon.tname(), e.tname() );
             }
-            auto ptr = dynamic_cast<const holster_actor *>( e.type->get_use( "holster" )->get_actor_ptr() );
+            const holster_actor *ptr = dynamic_cast<const holster_actor *>
+                                       ( e.type->get_use( "holster" )->get_actor_ptr() );
             ptr->store( *this, e, it );
             return;
         }
@@ -1513,7 +1515,7 @@ void npc::decide_needs()
     const auto inv_food = items_with( []( const item & itm ) {
         return itm.is_food();
     } );
-    for( auto &food : inv_food ) {
+    for( const item *food : inv_food ) {
         needrank[ need_food ] += nutrition_for( *food ) / 4.0;
         needrank[ need_drink ] += food->get_comestible()->quench / 4.0;
     }
@@ -1581,10 +1583,15 @@ bool npc::wants_to_sell( const item &it ) const
     return wants_to_sell( it, value( it, market_price ), market_price );
 }
 
-bool npc::wants_to_sell( const item &/*it*/, int at_price, int market_price ) const
+bool npc::wants_to_sell( const item &it, int at_price, int market_price ) const
 {
     if( mission == NPC_MISSION_SHOPKEEP ) {
-        return true;
+        // Keep items that we never want to trade.
+        if( it.has_flag( "TRADER_KEEP" ) ) {
+            return false;
+        }
+        // Also ones we don't want to trade while in use.
+        return !( it.has_flag( "TRADER_KEEP_EQUIPPED" ) && ( is_worn( it ) || is_wielding( it ) ) );
     }
 
     if( is_player_ally() ) {
@@ -1867,12 +1874,12 @@ healing_options npc::has_healing_options( healing_options try_to_fix )
     healing_options *fix_p = &can_fix;
 
     visit_items( [&fix_p, try_to_fix]( item * node ) {
-        const auto use = node->type->get_use( "heal" );
+        const use_function *use = node->type->get_use( "heal" );
         if( use == nullptr ) {
             return VisitResponse::NEXT;
         }
 
-        auto &actor = dynamic_cast<const heal_actor &>( *( use->get_actor_ptr() ) );
+        const heal_actor &actor = dynamic_cast<const heal_actor &>( *( use->get_actor_ptr() ) );
         if( try_to_fix.bandage && !fix_p->bandage && actor.bandages_power > 0.0f ) {
             fix_p->bandage = true;
         }
@@ -1906,12 +1913,12 @@ item &npc::get_healing_item( healing_options try_to_fix, bool first_best )
 {
     item *best = &null_item_reference();
     visit_items( [&best, try_to_fix, first_best]( item * node ) {
-        const auto use = node->type->get_use( "heal" );
+        const use_function *use = node->type->get_use( "heal" );
         if( use == nullptr ) {
             return VisitResponse::NEXT;
         }
 
-        auto &actor = dynamic_cast<const heal_actor &>( *( use->get_actor_ptr() ) );
+        const heal_actor &actor = dynamic_cast<const heal_actor &>( *( use->get_actor_ptr() ) );
         if( ( try_to_fix.bandage && actor.bandages_power > 0.0f ) ||
             ( try_to_fix.disinfect && actor.disinfectant_power > 0.0f ) ||
             ( try_to_fix.bleed && actor.bleed > 0 ) ||
@@ -2039,10 +2046,11 @@ bool npc::is_leader() const
 
 bool npc::within_boundaries_of_camp() const
 {
-    const point p( global_omt_location().xy() );
-    for( int x2 = p.x - 3; x2 < p.x + 3; x2++ ) {
-        for( int y2 = p.y - 3; y2 < p.y + 3; y2++ ) {
-            cata::optional<basecamp *> bcp = overmap_buffer.find_camp( point( x2, y2 ) );
+    const point_abs_omt p( global_omt_location().xy() );
+    for( int x2 = -3; x2 < 3; x2++ ) {
+        for( int y2 = -3; y2 < 3; y2++ ) {
+            const point_abs_omt nearby = p + point( x2, y2 );
+            cata::optional<basecamp *> bcp = overmap_buffer.find_camp( nearby );
             if( bcp ) {
                 return true;
             }
@@ -2443,8 +2451,8 @@ void npc::reboot()
     path.clear();
     last_player_seen_pos = cata::nullopt;
     last_seen_player_turn = 999;
-    wanted_item_pos = no_goal_point;
-    guard_pos = no_goal_point;
+    wanted_item_pos = tripoint_min;
+    guard_pos = tripoint_min;
     goal = no_goal_point;
     fetching_item = false;
     has_new_items = true;
@@ -2500,7 +2508,7 @@ void npc::die( Creature *nkiller )
     if( my_fac ) {
         if( !is_fake() && !is_hallucination() ) {
             if( my_fac->members.size() == 1 ) {
-                for( auto elem : inv_dump() ) {
+                for( const item *elem : inv_dump() ) {
                     elem->remove_owner();
                     elem->remove_old_owner();
                 }
@@ -2760,7 +2768,7 @@ void npc::on_load()
     }
 }
 
-constexpr tripoint npc::no_goal_point;
+constexpr tripoint_abs_omt npc::no_goal_point;
 
 bool npc::query_yn( const std::string &/*msg*/ ) const
 {
@@ -2787,7 +2795,8 @@ bool npc::dispose_item( item_location &&obj, const std::string & )
 
     for( auto &e : worn ) {
         if( e.can_holster( *obj ) ) {
-            auto ptr = dynamic_cast<const holster_actor *>( e.type->get_use( "holster" )->get_actor_ptr() );
+            const holster_actor *ptr = dynamic_cast<const holster_actor *>
+                                       ( e.type->get_use( "holster" )->get_actor_ptr() );
             opts.emplace_back( dispose_option {
                 item_store_cost( *obj, e, false, obj.obtain_cost( *this ) ),
                 [this, ptr, &e, &obj]{ ptr->store( *this, e, *obj ); }
@@ -3042,7 +3051,7 @@ std::string npc::get_epilogue() const
 
 void npc::set_companion_mission( npc &p, const std::string &mission_id )
 {
-    const tripoint omt_pos = p.global_omt_location();
+    const tripoint_abs_omt omt_pos = p.global_omt_location();
     set_companion_mission( omt_pos, p.companion_mission_role_id, mission_id );
 }
 
@@ -3078,7 +3087,7 @@ std::pair<std::string, nc_color> npc::hp_description() const
     }
     return std::make_pair( damage_info, col );
 }
-void npc::set_companion_mission( const tripoint &omt_pos, const std::string &role_id,
+void npc::set_companion_mission( const tripoint_abs_omt &omt_pos, const std::string &role_id,
                                  const std::string &mission_id )
 {
     comp_mission.position = omt_pos;
@@ -3086,8 +3095,8 @@ void npc::set_companion_mission( const tripoint &omt_pos, const std::string &rol
     comp_mission.role_id = role_id;
 }
 
-void npc::set_companion_mission( const tripoint &omt_pos, const std::string &role_id,
-                                 const std::string &mission_id, const tripoint &destination )
+void npc::set_companion_mission( const tripoint_abs_omt &omt_pos, const std::string &role_id,
+                                 const std::string &mission_id, const tripoint_abs_omt &destination )
 {
     comp_mission.position = omt_pos;
     comp_mission.mission_id = mission_id;
@@ -3097,7 +3106,7 @@ void npc::set_companion_mission( const tripoint &omt_pos, const std::string &rol
 
 void npc::reset_companion_mission()
 {
-    comp_mission.position = tripoint( -999, -999, -999 );
+    comp_mission.position = tripoint_abs_omt( -999, -999, -999 );
     comp_mission.mission_id.clear();
     comp_mission.role_id.clear();
     if( comp_mission.destination ) {
@@ -3105,7 +3114,7 @@ void npc::reset_companion_mission()
     }
 }
 
-cata::optional<tripoint> npc::get_mission_destination() const
+cata::optional<tripoint_abs_omt> npc::get_mission_destination() const
 {
     if( comp_mission.destination ) {
         return comp_mission.destination;

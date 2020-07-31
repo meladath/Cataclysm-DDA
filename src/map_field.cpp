@@ -90,7 +90,6 @@ static const trait_id trait_M_SKIN2( "M_SKIN2" );
 static const trait_id trait_M_SKIN3( "M_SKIN3" );
 static const trait_id trait_THRESH_MARLOSS( "THRESH_MARLOSS" );
 static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
-static const trait_id trait_WEB_WALKER( "WEB_WALKER" );
 
 void map::create_burnproducts( const tripoint &p, const item &fuel, const units::mass &burned_mass )
 {
@@ -101,7 +100,7 @@ void map::create_burnproducts( const tripoint &p, const item &fuel, const units:
     // Items that are multiple materials are assumed to be equal parts each.
     const units::mass by_weight = burned_mass / all_mats.size();
     for( material_id &mat : all_mats ) {
-        for( auto &bp : mat->burn_products() ) {
+        for( const auto &bp : mat->burn_products() ) {
             itype_id id = bp.first;
             // Spawning the same item as the one that was just burned is pointless
             // and leads to infinite recursion.
@@ -149,6 +148,10 @@ bool map::process_fields()
             for( int y = 0; y < my_MAPSIZE; y++ ) {
                 if( field_cache[ x + y * MAPSIZE ] ) {
                     submap *const current_submap = get_submap_at_grid( { x, y, z } );
+                    if( current_submap == nullptr ) {
+                        debugmsg( "Tried to process field at (%d,%d,%d) but the submap is not loaded", x, y, z );
+                        continue;
+                    }
                     const bool cur_dirty = process_fields_in_submap( current_submap, tripoint( x, y, z ) );
                     zlev_dirty |= cur_dirty;
                 }
@@ -255,7 +258,9 @@ void map::spread_gas( field_entry &cur, const tripoint &p, int percent_spread,
                       const time_duration &outdoor_age_speedup, scent_block &sblk )
 {
     map &here = get_map();
-    const oter_id &cur_om_ter = overmap_buffer.ter( ms_to_omt_copy( here.getabs( p ) ) );
+    // TODO: fix point types
+    const oter_id &cur_om_ter =
+        overmap_buffer.ter( tripoint_abs_omt( ms_to_omt_copy( here.getabs( p ) ) ) );
     const bool sheltered = g->is_sheltered( p );
     const int winddirection = g->weather.winddirection;
     const int windpower = get_local_windpower( g->weather.windspeed, cur_om_ter, p, winddirection,
@@ -388,7 +393,7 @@ If you need to insert a new field behavior per unit time add a case statement in
 bool map::process_fields_in_submap( submap *const current_submap,
                                     const tripoint &submap )
 {
-    scent_block sblk( submap, g->scent );
+    scent_block sblk( submap, get_scent() );
 
     // This should be true only when the field changes transparency
     // More correctly: not just when the field is opaque, but when it changes state
@@ -776,7 +781,6 @@ bool map::process_fields_in_submap( submap *const current_submap,
                         curfield.find_field( fd_plasma ) ||
                         curfield.find_field( fd_laser ) ||
                         curfield.find_field( fd_dazzling ) ||
-                        curfield.find_field( fd_electricity ) ||
                         curfield.find_field( fd_incendiary ) ) {
                         // Kill them at the end of processing.
                         cur.set_field_intensity( 0 );
@@ -822,7 +826,7 @@ bool map::process_fields_in_submap( submap *const current_submap,
 
                     create_hot_air( p, cur.get_field_intensity() );
                 }
-                if( curtype == fd_rubble ) {
+                if( curtype.obj().legacy_make_rubble ) {
                     // Legacy Stuff
                     make_rubble( p );
                 }
@@ -840,7 +844,7 @@ bool map::process_fields_in_submap( submap *const current_submap,
                 }
 
                 cur.set_field_age( cur.get_field_age() + 1_turns );
-                auto &fdata = cur.get_field_type().obj();
+                const auto &fdata = cur.get_field_type().obj();
                 if( fdata.half_life > 0_turns && cur.get_field_age() > 0_turns &&
                     dice( 2, to_turns<int>( cur.get_field_age() ) ) > to_turns<int>( fdata.half_life ) ) {
                     cur.set_field_age( 0_turns );
@@ -861,7 +865,12 @@ bool map::process_fields_in_submap( submap *const current_submap,
         auto &field_cache = get_cache( z ).field_cache;
         for( int y = std::max( submap.y - 1, 0 ); y <= std::min( submap.y + 1, MAPSIZE - 1 ); ++y ) {
             for( int x = std::max( submap.x - 1, 0 ); x <= std::min( submap.x + 1, MAPSIZE - 1 ); ++x ) {
-                if( get_submap_at_grid( { x, y, z } )->field_count > 0 ) {
+                ::submap *const sm = get_submap_at_grid( { x, y, z } );
+                if( sm == nullptr ) {
+                    debugmsg( "Tried add vehicle at (%d,%d,%d) but the submap is not loaded", x, y, z );
+                    continue;
+                }
+                if( sm->field_count > 0 ) {
                     field_cache.set( x + y * MAPSIZE );
                 } else {
                     field_cache.reset( x + y * MAPSIZE );
@@ -881,7 +890,8 @@ bool map::process_fire_field_in_submap( maptile &map_tile, const tripoint &p,
     field_entry *tmpfld = nullptr;
     cur.set_field_age( std::max( -24_hours, cur.get_field_age() ) );
     // Entire objects for ter/frn for flags
-    const oter_id &cur_om_ter = overmap_buffer.ter( ms_to_omt_copy( here.getabs( p ) ) );
+    const oter_id &cur_om_ter = overmap_buffer.ter( tripoint_abs_omt( ms_to_omt_copy( here.getabs(
+                                    p ) ) ) );
     bool sheltered = g->is_sheltered( p );
     int winddirection = g->weather.winddirection;
     int windpower = get_local_windpower( g->weather.windspeed, cur_om_ter, p, winddirection,
@@ -1105,7 +1115,7 @@ bool map::process_fire_field_in_submap( maptile &map_tile, const tripoint &p,
                      count != neighs.size() && cur.get_field_age() < 0_turns;
                      i = ( i + 1 ) % neighs.size(), count++ ) {
                     maptile &dst = neighs[i];
-                    auto dstfld = dst.find_field( fd_fire );
+                    field_entry *dstfld = dst.find_field( fd_fire );
                     // If the fire exists and is weaker than ours, boost it
                     if( dstfld != nullptr &&
                         ( dstfld->get_field_intensity() <= cur.get_field_intensity() ||
@@ -1548,13 +1558,6 @@ void map::player_in_field( player &u )
                 u.add_env_effect( effect_fungus, bp_eyes, 4, 10_minutes, num_bp, true );
             }
         }
-        if( ft == fd_dazzling ) {
-            if( cur.get_field_intensity() > 1 || one_in( 5 ) ) {
-                u.add_env_effect( effect_blind, bp_eyes, 10, 10_turns );
-            } else {
-                u.add_env_effect( effect_blind, bp_eyes, 2, 2_turns );
-            }
-        }
 
         if( cur.extra_radiation_min() > 0 ) {
             // Get irradiated by the nuclear fallout.
@@ -1690,10 +1693,10 @@ void map::creature_in_field( Creature &critter )
 {
     bool in_vehicle = false;
     bool inside_vehicle = false;
-    player *u = critter.as_player();
     if( critter.is_monster() ) {
         monster_in_field( *static_cast<monster *>( &critter ) );
     } else {
+        player *u = critter.as_player();
         if( u ) {
             in_vehicle = u->in_vehicle;
             // If we are in a vehicle figure out if we are inside (reduces effects usually)

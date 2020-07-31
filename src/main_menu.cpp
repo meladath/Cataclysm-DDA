@@ -24,7 +24,6 @@
 #include "gamemode.h"
 #include "get_version.h"
 #include "help.h"
-#include "ime.h"
 #include "loading_ui.h"
 #include "mapbuffer.h"
 #include "mapsharing.h"
@@ -572,15 +571,6 @@ bool main_menu::opening_screen()
 
             std::string sInput = ctxt.get_raw_input().text;
 
-            // switch off ime at program start
-            if( ctxt.get_raw_input().sequence.empty() ) {
-                // FIXME: disable_ime only seems to work after receiving an input event
-                // with empty input sequence. (empty input event is also fired when the
-                // window loses focus, might be related?)
-                disable_ime();
-                continue;
-            }
-
             // check automatic menu shortcuts
             for( size_t i = 0; i < vMenuHotkeys.size(); ++i ) {
                 for( const std::string &hotkey : vMenuHotkeys[i] ) {
@@ -977,7 +967,7 @@ bool main_menu::new_character_tab()
     } // end while
 
     if( start ) {
-        add_msg( g->scen->description( player_character.male ) );
+        add_msg( get_scenario()->description( player_character.male ) );
 
         world_generator->last_world_name = world_generator->active_world->world_name;
         world_generator->last_character_name = player_character.name;
