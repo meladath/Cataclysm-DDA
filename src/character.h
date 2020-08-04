@@ -21,18 +21,13 @@
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character_id.h"
-#include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "damage.h"
 #include "enums.h"
 #include "flat_set.h"
 #include "game_constants.h"
-#include "inventory.h"
-#include "item.h"
 #include "item_location.h"
-#include "magic.h"
-#include "magic_enchantment.h"
 #include "memory_fast.h"
 #include "optional.h"
 #include "pimpl.h"
@@ -49,12 +44,15 @@
 
 class basecamp;
 class bionic_collection;
+class character_martial_arts;
 class faction;
 class JsonIn;
 class JsonObject;
 class JsonOut;
+class known_magic;
 class monster;
 class nc_color;
+class npc;
 class player;
 class player_morale;
 class proficiency_set;
@@ -79,7 +77,7 @@ struct w_point;
 template <typename E> struct enum_traits;
 
 enum npc_attitude : int;
-
+enum action_id : int;
 
 static const std::string DEFAULT_HOTKEYS( "1234567890abcdefghijklmnopqrstuvwxyz" );
 
@@ -1004,9 +1002,7 @@ class Character : public Creature, public visitable<Character>
         /** Returns true if the player has any martial arts buffs attached */
         bool has_mabuff( const mabuff_id &buff_id ) const;
         /** Returns true if the player has a grab breaking technique available */
-        bool has_grab_break_tec() const override {
-            return martial_arts_data.has_grab_break_tec();
-        }
+        bool has_grab_break_tec() const override;
 
         /** Returns the to hit bonus from martial arts buffs */
         float mabuff_tohit_bonus() const;
@@ -1631,7 +1627,7 @@ class Character : public Creature, public visitable<Character>
             }
         }
         // magic mod
-        known_magic magic;
+        pimpl<known_magic> magic;
 
         void make_bleed( const bodypart_id &bp, time_duration duration, int intensity = 1,
                          bool permanent = false,
@@ -1742,13 +1738,13 @@ class Character : public Creature, public visitable<Character>
         player_activity activity;
         std::list<player_activity> backlog;
         cata::optional<tripoint> destination_point;
-        inventory inv;
+        pimpl<inventory> inv;
         itype_id last_item;
         item weapon;
 
         int scent = 0;
         pimpl<bionic_collection> my_bionics;
-        character_martial_arts martial_arts_data;
+        pimpl<character_martial_arts> martial_arts_data;
 
         stomach_contents stomach;
         stomach_contents guts;
@@ -2572,7 +2568,7 @@ class Character : public Creature, public visitable<Character>
 
         // a cache of all active enchantment values.
         // is recalculated every turn in Character::recalculate_enchantment_cache
-        enchantment enchantment_cache;
+        pimpl<enchantment> enchantment_cache;
         player_activity destination_activity;
         /// A unique ID number, assigned by the game class. Values should never be reused.
         character_id id;
@@ -2606,7 +2602,7 @@ class Character : public Creature, public visitable<Character>
 
         int cached_moves;
         tripoint cached_position;
-        inventory cached_crafting_inventory;
+        pimpl<inventory> cached_crafting_inventory;
 
     protected:
         /** Subset of learned recipes. Needs to be mutable for lazy initialization. */
